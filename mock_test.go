@@ -21,6 +21,7 @@ func TestMock(t *testing.T) {
 		ManyArgs(a, b, c int16, d, e, f int32, g, h, i int64, j, k, l uintptr, x float32) (r1, r2 int, r3, r4 float32)
 		UncommonArgs(UncommonType, *UncommonType) (UncommonType, *UncommonType, reflect.Type)
 		StackArg([32]int)
+		ConvertReturnValue() (int16, <-chan int)
 	}
 	i, m := Mock[TestInterface]()
 
@@ -101,6 +102,13 @@ func TestMock(t *testing.T) {
 		m.On("StackArg", arg).Return()
 		i.StackArg(arg)
 		m.AssertCalled(t, "StackArg", arg)
+	})
+
+	t.Run("convert return value", func(t *testing.T) {
+		ch := make(chan int)
+		m.On("ConvertReturnValue").Return(1, ch)
+		_, _ = i.ConvertReturnValue()
+		m.AssertCalled(t, "ConvertReturnValue")
 	})
 
 	t.Run("multiple instances", func(t *testing.T) {

@@ -61,9 +61,10 @@ func mockMethod(m *mock.Mock, method reflect.Method) any {
 		inValues = inValues[1:] // skip receiver
 		in := make([]any, len(inValues))
 		for i, val := range inValues {
-			if val.IsZero() {
+			switch {
+			case val.IsZero():
 				in[i] = nil
-			} else {
+			default:
 				in[i] = val.Interface()
 			}
 		}
@@ -73,9 +74,12 @@ func mockMethod(m *mock.Mock, method reflect.Method) any {
 		}
 		outValues = make([]reflect.Value, len(out))
 		for i, val := range out {
-			if val == nil {
+			switch {
+			case val == nil:
 				outValues[i] = reflect.Zero(outTypes[i])
-			} else {
+			case reflect.TypeOf(val) != outTypes[i]:
+				outValues[i] = reflect.ValueOf(val).Convert(outTypes[i])
+			default:
 				outValues[i] = reflect.ValueOf(val)
 			}
 		}
