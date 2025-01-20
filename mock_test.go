@@ -20,6 +20,7 @@ func TestMock(t *testing.T) {
 		NullableOutput() error
 		ManyArgs(a, b, c int16, d, e, f int32, g, h, i int64, j, k, l uintptr, x float32) (r1, r2 int, r3, r4 float32)
 		UncommonArgs(UncommonType, *UncommonType) (UncommonType, *UncommonType, reflect.Type)
+		StackArg([32]int)
 	}
 	i, m := Mock[TestInterface]()
 
@@ -90,6 +91,16 @@ func TestMock(t *testing.T) {
 		assert.NotNil(t, typ_)
 		assert.Equal(t, typ.Name(), typ_.Name())
 		m.AssertCalled(t, "UncommonArgs", uIn, &uIn)
+	})
+
+	t.Run("stack arg", func(t *testing.T) {
+		var arg [32]int
+		for i := range arg {
+			arg[i] = i
+		}
+		m.On("StackArg", arg).Return()
+		i.StackArg(arg)
+		m.AssertCalled(t, "StackArg", arg)
 	})
 
 	t.Run("multiple instances", func(t *testing.T) {
