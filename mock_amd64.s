@@ -2,11 +2,13 @@
 #include "funcdata.h"
 #include "go_asm.h"
 
+// AX is *mockBase
+// DX is the closure context register for the mock methods
+// Dereferencing the context returns the function pointer
 #define MAKE_WRAPPER(NAME,OFFSET)		\
 TEXT NAME(SB),(WRAPPER),$0		\
 	NO_LOCAL_POINTERS		\
-	ADDQ $OFFSET, AX		\
-	MOVQ (AX), DX		\
+	MOVQ OFFSET(AX), DX		\
 	MOVQ (DX), R12		\
 	ADDQ $16, SP		\
 	JMP R12
