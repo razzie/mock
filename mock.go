@@ -2,6 +2,7 @@ package mock
 
 import (
 	"reflect"
+	"sync"
 	"unsafe"
 
 	"github.com/stretchr/testify/mock"
@@ -15,6 +16,16 @@ const (
 	ptrSize = 4 << (^uintptr(0) >> 63)
 )
 
+var (
+	mu    sync.RWMutex
+	cache map[reflect.Type]cachedMockType = map[reflect.Type]cachedMockType{}
+)
+
+type cachedMockType struct {
+	mockType reflect.Type
+	contexts unsafe.Pointer
+}
+
 // Mock takes a T interface type and returns a runtime generated mock implementation for it
 // plus a testify mock.Mock object to control its behavior
 func Mock[T any]() (T, *mock.Mock) {
@@ -23,7 +34,18 @@ func Mock[T any]() (T, *mock.Mock) {
 		panic("not an interface type: " + typ.Name())
 	}
 
-	mockTyp := reflect.StructOf([]reflect.StructField{
+	mu.RLock()
+	cached, ok := cache[typ]
+	mu.RUnlock()
+	if ok {
+		m := new(mock.Mock)
+		obj := reflect.New(cached.mockType).Elem()
+		obj.Field(0).Set(reflect.ValueOf(cached.contexts))
+		obj.Field(1).Set(reflect.ValueOf(m))
+		return obj.Interface().(T), m
+	}
+
+	mockType := reflect.StructOf([]reflect.StructField{
 		{
 			Name: "MockMethodContexts__" + typ.Name(),
 			Type: reflect.TypeFor[unsafe.Pointer](),
@@ -39,19 +61,26 @@ func Mock[T any]() (T, *mock.Mock) {
 		},
 	})
 	contexts := make([]unsafe.Pointer, typ.NumMethod())
-	abiMethods := getAbiMethods(mockTyp)
+	abiMethods := getAbiMethods(mockType)
 	for i := range abiMethods {
 		fn := mockMethod(typ.Method(i))
 		vptr := (*(*[2]unsafe.Pointer)(unsafe.Pointer(&fn)))[1]
 		contexts[i] = vptr
 		abiMethods[i].setFn(mockMethodWrappers[i])
 	}
+	contextsPtr := unsafe.Pointer(unsafe.SliceData(contexts))
+	mu.Lock()
+	cache[typ] = cachedMockType{
+		mockType: mockType,
+		contexts: contextsPtr,
+	}
+	mu.Unlock()
 
 	m := new(mock.Mock)
-	t := reflect.New(mockTyp).Elem()
-	t.Field(0).Set(reflect.ValueOf(unsafe.Pointer(unsafe.SliceData(contexts))))
-	t.Field(1).Set(reflect.ValueOf(m))
-	return t.Interface().(T), m
+	obj := reflect.New(mockType).Elem()
+	obj.Field(0).Set(reflect.ValueOf(contextsPtr))
+	obj.Field(1).Set(reflect.ValueOf(m))
+	return obj.Interface().(T), m
 }
 
 func mockMethod(method reflect.Method) any {
