@@ -26,37 +26,45 @@ func TestMock(t *testing.T) {
 	i, m := Mock[TestInterface]()
 
 	t.Run("ints", func(t *testing.T) {
-		m.On("Ints", 1, 2).Return(3)
+		call := m.On("Ints", 1, 2).Return(3)
 		assert.Equal(t, 3, i.Ints(1, 2))
-		m.AssertCalled(t, "Ints", 1, 2)
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("variadic", func(t *testing.T) {
-		m.On("Variadic", []string{"a", "b"}).Once().Return("ab")
+		call := m.On("Variadic", []string{"a", "b"}).Return("ab")
 		assert.Equal(t, "ab", i.Variadic("a", "b"))
-		m.AssertCalled(t, "Variadic", []string{"a", "b"})
+		m.AssertExpectations(t)
+		call.Unset()
 
-		m.On("Variadic", nil).Once().Return("")
+		call = m.On("Variadic", nil).Return("")
 		assert.Equal(t, "", i.Variadic())
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("nullable input", func(t *testing.T) {
-		m.On("NullableInput", nil, nil).Return()
+		call := m.On("NullableInput", nil, nil).Return()
 		i.NullableInput(nil, nil)
-		m.AssertCalled(t, "NullableInput", nil, nil)
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("nullable output", func(t *testing.T) {
-		m.On("NullableOutput").Once().Return(assert.AnError)
+		call := m.On("NullableOutput").Return(assert.AnError)
 		assert.Equal(t, assert.AnError, i.NullableOutput())
-		m.AssertCalled(t, "NullableOutput")
+		m.AssertExpectations(t)
+		call.Unset()
 
-		m.On("NullableOutput").Once().Return(nil)
+		call = m.On("NullableOutput").Once().Return(nil)
 		assert.NoError(t, i.NullableOutput())
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("many args", func(t *testing.T) {
-		m.On("ManyArgs",
+		call := m.On("ManyArgs",
 			int16(1), int16(2), int16(3),
 			int32(4), int32(5), int32(6),
 			int64(7), int64(8), int64(9),
@@ -68,6 +76,8 @@ func TestMock(t *testing.T) {
 		assert.Equal(t, 2, r2)
 		assert.Equal(t, float32(3.0), r3)
 		assert.Equal(t, float32(4.0), r4)
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("uncommon args", func(t *testing.T) {
@@ -84,14 +94,15 @@ func TestMock(t *testing.T) {
 			StrPtr: &world,
 			Slice:  []int{-1},
 		}
-		m.On("UncommonArgs", uIn, &uIn).Return(uOut, &uOut, typ)
+		call := m.On("UncommonArgs", uIn, &uIn).Return(uOut, &uOut, typ)
 		u_, uPtr_, typ_ := i.UncommonArgs(uIn, &uIn)
 		assert.Equal(t, uOut, u_)
 		assert.NotNil(t, uPtr_)
 		assert.Equal(t, &uOut, uPtr_)
 		assert.NotNil(t, typ_)
 		assert.Equal(t, typ.Name(), typ_.Name())
-		m.AssertCalled(t, "UncommonArgs", uIn, &uIn)
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("stack arg", func(t *testing.T) {
@@ -99,16 +110,18 @@ func TestMock(t *testing.T) {
 		for i := range arg {
 			arg[i] = i
 		}
-		m.On("StackArg", arg).Return()
+		call := m.On("StackArg", arg).Return()
 		i.StackArg(arg)
-		m.AssertCalled(t, "StackArg", arg)
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("convert return value", func(t *testing.T) {
 		ch := make(chan int)
-		m.On("ConvertReturnValue").Return(1, ch)
+		call := m.On("ConvertReturnValue").Return(1, ch)
 		_, _ = i.ConvertReturnValue()
-		m.AssertCalled(t, "ConvertReturnValue")
+		m.AssertExpectations(t)
+		call.Unset()
 	})
 
 	t.Run("multiple instances", func(t *testing.T) {
