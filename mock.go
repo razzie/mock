@@ -12,12 +12,8 @@ const (
 	// shouldn't be taken into consideration.
 	Anything = mock.Anything
 
-	maxMockMethods = 64
+	ptrSize = 4 << (^uintptr(0) >> 63)
 )
-
-type mockBase struct {
-	ctxs [maxMockMethods]unsafe.Pointer
-}
 
 // Mock takes a T interface type and returns a runtime generated mock implementation for it
 // plus a testify mock.Mock object to control its behavior
@@ -29,8 +25,12 @@ func Mock[T any]() (T, *mock.Mock) {
 
 	mockTyp := reflect.StructOf([]reflect.StructField{
 		{
-			Name: "MockBase__" + typ.Name(),
-			Type: reflect.TypeFor[mockBase](),
+			Name: "MockMethodContexts__" + typ.Name(),
+			Type: reflect.TypeFor[unsafe.Pointer](),
+		},
+		{
+			Name: "Mock__" + typ.Name(),
+			Type: reflect.TypeFor[*mock.Mock](),
 		},
 		{
 			Name:      typ.Name(),
@@ -38,29 +38,30 @@ func Mock[T any]() (T, *mock.Mock) {
 			Anonymous: true,
 		},
 	})
-	m := new(mock.Mock)
-	t := reflect.New(mockTyp).Elem()
-	base := t.Field(0).Addr().Interface().(*mockBase)
-
+	contexts := make([]unsafe.Pointer, typ.NumMethod())
 	abiMethods := getAbiMethods(mockTyp)
 	for i := range abiMethods {
-		fn := mockMethod(m, typ.Method(i))
+		fn := mockMethod(typ.Method(i))
 		vptr := (*(*[2]unsafe.Pointer)(unsafe.Pointer(&fn)))[1]
-		base.ctxs[i] = vptr
+		contexts[i] = vptr
 		abiMethods[i].setFn(mockMethodWrappers[i])
 	}
 
+	m := new(mock.Mock)
+	t := reflect.New(mockTyp).Elem()
+	t.Field(0).Set(reflect.ValueOf(unsafe.Pointer(unsafe.SliceData(contexts))))
+	t.Field(1).Set(reflect.ValueOf(m))
 	return t.Interface().(T), m
 }
 
-func mockMethod(m *mock.Mock, method reflect.Method) any {
+func mockMethod(method reflect.Method) any {
 	inTypes := getInTypes(method)
 	outTypes := getOutTypes(method)
 	fnType := reflect.FuncOf(inTypes, outTypes, method.Type.IsVariadic())
 	fnImpl := func(inValues []reflect.Value) (outValues []reflect.Value) {
-		inValues = inValues[1:] // skip receiver
-		in := make([]any, len(inValues))
-		for i, val := range inValues {
+		recv := inValues[0]
+		in := make([]any, len(inValues)-1)
+		for i, val := range inValues[1:] {
 			switch {
 			case val.IsZero():
 				in[i] = nil
@@ -68,6 +69,7 @@ func mockMethod(m *mock.Mock, method reflect.Method) any {
 				in[i] = val.Interface()
 			}
 		}
+		m := *(**mock.Mock)(unsafe.Add(recv.UnsafePointer(), ptrSize))
 		out := m.MethodCalled(method.Name, in...)
 		if len(out) != len(outTypes) {
 			panic("mock: invalid number of outputs")
@@ -90,7 +92,7 @@ func mockMethod(m *mock.Mock, method reflect.Method) any {
 }
 
 func getInTypes(method reflect.Method) []reflect.Type {
-	recv := reflect.TypeFor[*mockBase]()
+	recv := reflect.TypeFor[unsafe.Pointer]()
 	types := make([]reflect.Type, method.Type.NumIn()+1)
 	types[0] = recv
 	for i := range types[1:] {
