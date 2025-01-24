@@ -16,8 +16,7 @@ type abiMethod struct {
 }
 
 func (m *abiMethod) setFn(fn any) {
-	off := addReflectOff(unsafe.Pointer(reflect.ValueOf(fn).Pointer()))
-	//m.Tfn = off
+	off := addReflectOff(reflect.ValueOf(fn).UnsafePointer())
 	m.Ifn = off
 }
 
@@ -59,7 +58,7 @@ func getAbiMethods(typ reflect.Type) []abiMethod {
 		StructType
 		u UncommonType
 	}
-	t := (*(*[2]unsafe.Pointer)(unsafe.Pointer(&typ)))[1]
+	t := unpackIfaceData(typ)
 	u := &(*StructTypeUncommon)(t).u
 	if u.Mcount == 0 {
 		return nil

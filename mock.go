@@ -24,9 +24,10 @@ var (
 // Mock takes a T interface type and returns a runtime generated mock implementation for it
 // plus a testify mock.Mock object to control its behavior
 func Mock[T any]() (T, *mock.Mock) {
-	typ := reflect.TypeOf((*T)(nil)).Elem()
+	typ := reflect.TypeFor[T]()
+	typName := typ.Name()
 	if typ.Kind() != reflect.Interface {
-		panic("not an interface type: " + typ.Name())
+		panic("not an interface type: " + typName)
 	}
 
 	mu.Lock()
@@ -34,23 +35,23 @@ func Mock[T any]() (T, *mock.Mock) {
 	if cache == nil {
 		cache = make(map[reflect.Type]func() (any, *mock.Mock))
 	}
-	cached, ok := cache[typ]
+	newMock, ok := cache[typ]
 	if ok {
-		obj, m := cached()
+		obj, m := newMock()
 		return obj.(T), m
 	}
 
 	mockType := reflect.StructOf([]reflect.StructField{
 		{
-			Name: "MockMethodContexts__" + typ.Name(),
+			Name: "MockMethodContexts__" + typName,
 			Type: reflect.TypeFor[unsafe.Pointer](),
 		},
 		{
-			Name: "Mock__" + typ.Name(),
+			Name: "Mock__" + typName,
 			Type: reflect.TypeFor[*mock.Mock](),
 		},
 		{
-			Name:      typ.Name(),
+			Name:      typName,
 			Type:      typ,
 			Anonymous: true,
 		},
@@ -63,7 +64,7 @@ func Mock[T any]() (T, *mock.Mock) {
 		abiMethods[i].setFn(mockMethodWrappers[i])
 	}
 
-	newMock := func() (any, *mock.Mock) {
+	newMock = func() (any, *mock.Mock) {
 		contextsPtr := unsafe.Pointer(unsafe.SliceData(contexts))
 		m := new(mock.Mock)
 		obj := reflect.New(mockType).Elem()
@@ -110,8 +111,7 @@ func mockMethod(method reflect.Method) any {
 		}
 		return
 	}
-	fnVal := reflect.MakeFunc(fnType, fnImpl)
-	return fnVal.Interface()
+	return reflect.MakeFunc(fnType, fnImpl).Interface()
 }
 
 func getInTypes(method reflect.Method) []reflect.Type {
